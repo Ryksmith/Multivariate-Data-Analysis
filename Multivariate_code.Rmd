@@ -1,0 +1,322 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+
+##Multiple Linear Regression on table 8.5 data
+```{r, message = F, echo = F,warning = F,}
+##Library Tidyverse allows piping, etc.
+library(tidyverse)
+
+##Get the data from table 8.5, provided.
+data <- read.delim("~/Desktop/School/STA 135/STA_135 Project/T8-5.DAT", header=FALSE)
+
+##Select Response Variable(Median Home Value)
+Y <- data[,5]
+n <- length(Y)
+
+##Name the columns to reflect their meaning
+colnames(data) <- c("pop", "degree", "employed", "govEmployed", "homeValue")
+temp <- data[,c(1,2,5)]
+head(temp)
+attach(temp)
+
+plot(pop, homeValue)   
+plot(degree, homeValue)
+#mean(homeValue)
+#mean(pop)
+#mean(degree)
+```
+
+```{r, message = F, echo = F,warning = F}
+##Bind 1's to each row, to be the coefficients for Beta 0
+
+Z <- cbind(rep(1,n), as.matrix(data[1:2]))
+r <- dim(Z)[2]-1
+head(Z)
+
+
+## Calculate the least squares estimates for each predictor
+beta_hat <- solve(t(Z)%*%Z)%*%t(Z)%*%Y
+beta_hat
+
+#Calculate the R Squared statistic
+R_square <- 1 - sum((Y - Z%*%beta_hat)^2)/sum((Y-mean(Y))^2)
+R_square
+
+##Calculate the estimated sample variance(signma_hat_square)
+sigma_hat_square <- sum((Y - Z%*%beta_hat)^2)/(n-r-1)
+sigma_hat_square
+
+# Calulate the estimated covariance of hat{beta}
+sigma_hat_square * solve(t(Z)%*%Z)
+
+
+
+# t-test for single coefficient
+# H_0: beta_j = 0, H_a: beta_j != 0
+
+j <- 1
+t_stat <- (beta_hat[j+1] - 0)/sqrt(sigma_hat_square * solve(t(Z)%*%Z)[j+1,j+1])
+t_stat
+
+alpha <- 0.05
+cval_t <- qt(1-alpha/2, n-r-1)
+cval_t
+
+
+# One-at-a-time confidence interval for beta_j
+
+j <- 2
+cat('[',
+    beta_hat[j+1] - qt(1-alpha/2, n-r-1)*sqrt(sigma_hat_square * solve(t(Z)%*%Z)[j+1,j+1]),
+    ',',
+    beta_hat[j+1] + qt(1-alpha/2, n-r-1)*sqrt(sigma_hat_square * solve(t(Z)%*%Z)[j+1,j+1]),
+    ']')
+
+# confidence region based simultaneous confidence intervals 
+
+j <- 2
+cat('[',
+    beta_hat[j+1] - sqrt((r+1)*qf(1-alpha, r+1, n-r-1))*sqrt(sigma_hat_square * solve(t(Z)%*%Z)[j+1,j+1]),
+    ',',
+    beta_hat[j+1] + sqrt((r+1)*qf(1-alpha, r+1, n-r-1))*sqrt(sigma_hat_square * solve(t(Z)%*%Z)[j+1,j+1]),
+    ']')
+
+# Bonferroni correction based simultaneous confidence intervals
+
+j <- 2
+cat('[',
+    beta_hat[j+1] - qt(1-alpha/(2*(r+1)), n-r-1)*sqrt(sigma_hat_square * solve(t(Z)%*%Z)[j+1,j+1]),
+    ',',
+    beta_hat[j+1] + qt(1-alpha/(2*(r+1)), n-r-1)*sqrt(sigma_hat_square * solve(t(Z)%*%Z)[j+1,j+1]),
+    ']')
+
+# F-test
+# H_0: beta_1 = beta_2 = 0
+
+C <- matrix(c(0,0,1,0,0,1),2,3)
+
+df_1 <- qr(C)$rank # df_1: rank of matrix R
+
+f_stat <- (t(C%*%beta_hat)%*%solve(C%*%solve(t(Z)%*%Z)%*%t(C))%*%(C%*%beta_hat)/df_1)/sigma_hat_square
+f_stat
+
+cval_f <- qf(1-alpha, 2, n-r-1) * (r)
+cval_f
+
+# (equivalent) F-test by comparing residuals
+
+# fit the reduced model
+beta_hat_reduced <- solve(t(Z[,1])%*%Z[,1])%*%t(Z[,1])%*%Y
+beta_hat_reduced
+
+f_stat_reduced <- ((sum((Y - Z[,1]%*%beta_hat_reduced)^2) - sum((Y - Z%*%beta_hat)^2))/2)/sigma_hat_square
+f_stat_reduced
+
+# confidence interval for z_0^T beta
+
+z_0 <- c(1, length(Y), length(Y))
+
+cat('[',
+    z_0%*%beta_hat - sqrt(sigma_hat_square)*sqrt(t(z_0)%*%solve(t(Z)%*%Z)%*%z_0)*qt(1-alpha/2, n-r-1),
+    ',',
+    z_0%*%beta_hat + sqrt(sigma_hat_square)*sqrt(t(z_0)%*%solve(t(Z)%*%Z)%*%z_0)*qt(1-alpha/2, n-r-1),
+    ']')
+
+# prediction interval for Y_0 = z_0^T beta + epsilon_0
+
+cat('[',
+    z_0%*%beta_hat - sqrt(sigma_hat_square)*sqrt(1+t(z_0)%*%solve(t(Z)%*%Z)%*%z_0)*qt(1-alpha/2, n-r-1),
+    ',',
+    z_0%*%beta_hat + sqrt(sigma_hat_square)*sqrt(1+t(z_0)%*%solve(t(Z)%*%Z)%*%z_0)*qt(1-alpha/2, n-r-1),
+    ']')
+
+
+# Confidence Region for (beta_1, beta_2)^T, zoomed out to allow us to see the entire ellipse
+center <- beta_hat[2:3]
+es<-eigen(cov(Z)[2:3, 2:3])
+e1<-es$vec %*% diag(sqrt(es$val))
+r1<-sqrt(df_1*cval_f*sigma_hat_square)
+theta<-seq(0,2*pi,len=250)
+v1<-cbind(r1*cos(theta), r1*sin(theta))
+pts<-t(center - (e1%*%t(v1)))
+plot(pts,type="l",main="Confidence Region for (beta_1, beta_2)^T",xlab="beta_1",ylab="beta_2",asp=1,
+     xlim = c(-1,1),ylim=c(-5,5))
+segments(0,center[2],center[1],center[2],lty=2) # highlight the center
+segments(center[1],0,center[1],center[2],lty=2)
+#arrows(-0.3,0,0.1,0)
+#arrows(0,-0.1,0,0.05)
+
+th2<-c(0,pi/2,pi,3*pi/2,2*pi)   #adding the axis
+v2<-cbind(r1*cos(th2), r1*sin(th2))
+pts2<-t(center-(e1%*%t(v2)))
+segments(pts2[3,1],pts2[3,2],pts2[1,1],pts2[1,2],lty=3)  
+segments(pts2[2,1],pts2[2,2],pts2[4,1],pts2[4,2],lty=3)
+```
+
+
+
+
+
+###LDA and two-sample test on table 11.6 Data
+```{R, echo =F}
+library(rrcov)
+library(tidyverse)
+
+#Admission data
+data <- read.table("~/Desktop/School/STA 135/STA_135 Project/T11-6.DAT", quote="\"", comment.char="")
+colnames(data) <- c("GPA", "GMAT", "Acceptance")
+admit.data <- data[1:28,] %>% mutate(GMAT = GMAT/100) #Scaling GMAT
+donotadmit.data <- data[32:59,] %>% mutate(GMAT = GMAT/100) #Scaling GMAT
+data <- rbind(admit.data,donotadmit.data)
+#colMeans(admit.data)
+#colMeans(donotadmit.data)
+
+###TWO sample test
+## partial code credit to Weiping Zhang(USTC)
+#### two-sample Hotelling's T2 test  -------
+
+
+# now we perform the two-sample Hotelling T^2-test
+n<-c(28,28)
+p<-2
+test_admit.data <- admit.data[,1:2] 
+test_donotadmit.data <- donotadmit.data[,1:2]
+xmean1<-colMeans(test_admit.data)
+xmean2<-colMeans(test_donotadmit.data)
+d<-xmean1-xmean2
+S1<-var(test_admit.data)
+S2<-var(test_donotadmit.data)
+Sp<-((n[1]-1)*S1+(n[2]-1)*S2)/(sum(n)-2)
+t2 <- t(d)%*%solve(sum(1/n)*Sp)%*%d
+t2
+
+alpha<-0.05
+cval <- (sum(n)-2)*p/(sum(n)-p-1)*qf(1-alpha,p,sum(n)-p-1)
+cval
+
+
+# Confidence Region
+es<-eigen(sum(1/n)*Sp)
+e1<-es$vec %*% diag(sqrt(es$val))
+r1<-sqrt(cval)
+theta<-seq(0,2*pi,len=250)
+v1<-cbind(r1*cos(theta), r1*sin(theta))
+pts<-t(d-(e1%*%t(v1)))
+plot(pts,type="l",main="Confidence Region for Bivariate Normal",xlab="GPA",ylab="GMAT",asp=1)
+segments(0,d[2],d[1],d[2],lty=2) # highlight the center
+segments(d[1],0,d[1],d[2],lty=2)
+
+th2<-c(0,pi/2,pi,3*pi/2,2*pi)   #adding the axis
+v2<-cbind(r1*cos(th2), r1*sin(th2))
+pts2<-t(d-(e1%*%t(v2)))
+segments(pts2[3,1],pts2[3,2],pts2[1,1],pts2[1,2],lty=3)  
+segments(pts2[2,1],pts2[2,2],pts2[4,1],pts2[4,2],lty=3)
+
+
+
+# since we reject the null, we use the simultaneous confidence intervals
+# to check the significant components
+
+# simultaneous confidence intervals
+wd<-sqrt(cval*diag(Sp)*sum(1/n))
+Cis<-cbind(d-wd,d+wd)
+
+cat("95% simultaneous confidence interval","\n")
+Cis
+
+#Bonferroni simultaneous confidence intervals
+wd.b<- qt(1-alpha/(2*p),n[1]+n[2]-2) *sqrt(diag(Sp)*sum(1/n))
+Cis.b<-cbind(d-wd.b,d+wd.b)
+cat("95% Bonferroni simultaneous confidence interval","\n")
+Cis.b
+
+# both component-wise simultaneous confidence intervals do not contain 0, so they have significant differences. 
+
+
+
+
+
+###LDA
+## Method 2: use function LDA in MASS package:
+
+library(MASS)
+lda.obj <- lda(Acceptance~GPA+GMAT,data=data,prior=c(1,1)/2)
+plda <- predict(object=lda.obj,newdata=data)
+
+# Confusion matrix
+table(data[,3],plda$class)
+
+#plot the decision line
+gmean <- lda.obj$prior %*% lda.obj$means
+const <- as.numeric(gmean %*%lda.obj$scaling)
+slope <- - lda.obj$scaling[1] / lda.obj$scaling[2]
+intercept <- const / lda.obj$scaling[2]
+
+#Plot decision boundary
+plot(data[,1:2],pch=rep(c(18,20),each=28),col=rep(c(2,4),each=28))
+abline(intercept, slope)
+legend("topright",legend=c("Admit","Do Not Admit"),pch=c(18,20),col=c(2,4))
+
+
+```
+
+
+
+
+
+##PCA on Table 9-12 Data
+```{r,error = F, echo = F, warning =F}
+# Example 1 US State
+data <- read.table("~/Desktop/School/STA 135/STA_135 Project/T9-12.DAT", quote="\"", comment.char="")
+colnames(data) <- c("salesGrowth", "salesProfit", "newAccount", "cScore", "mReasoningScore", "aRScore", "matScore")
+head(data)
+
+library(corrgram)
+#corrgram(data,lower.panel=panel.shade, upper.panel=panel.pie, text.panel = panel.txt)
+
+# Find the sample correlation matrix, use it to find the principal components
+data.pc <- princomp(data, cor=TRUE)
+
+summary(data.pc, loadings = TRUE)
+
+# The eigenvalues of the correlation matrix:
+(data.pc$sdev)^2
+
+# A scree plot:
+plot(1:(length(data.pc$sdev)),  (data.pc$sdev)^2, type='b', 
+     main="Scree Plot", xlab="Number of Components", ylab="Eigenvalue Size")
+
+# Where does the "elbow" occur?
+#The Elbow occurs at two components. 
+
+# What seems to be a reasonable number of PCs to use?
+#Two Principal compenents seems to be the reasonable number to use. it reduces the dimensions from 7 to 2, and still captues 85.26% of the variance of the original data.
+
+
+# Plotting the PC scores for the sample data in the space of the first two principal components:
+par(pty="s")
+plot(data.pc$scores[,1], data.pc$scores[,2], 
+     xlab="PC 1", ylab="PC 2", type ='n')
+labels = c(1:50)
+text(data.pc$scores[,1], data.pc$scores[,2], labels = labels, cex=0.7, lwd=2)
+
+# The biplot can add information about the variables to the plot of the first two PC scores:
+
+biplot(data.pc, xlabs=labels)
+
+```
+
+\newpage
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
+
+
+
+
+
